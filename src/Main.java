@@ -2,379 +2,297 @@ import java.sql.*;
 import java.util.Scanner;
 
 public class Main {
+    private static final String URL = "jdbc:postgresql://localhost:5432/postgres";
+    private static final String USER = "postgres";
+    private static final String PASS = "9090";
+    private static final Scanner sc = new Scanner(System.in);
+
     public static void main(String[] args) {
-
-        Scanner scanner = new Scanner(System.in);
-        String connectionUrl = "jdbc:postgresql://localhost:5432/postgres";
-
-        Connection con = null;
-        Statement stmt = null;
-
-        try {
-            Class.forName("org.postgresql.Driver");
-            con = DriverManager.getConnection(connectionUrl, "postgres", "9090");
-            stmt = con.createStatement();
-
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
             while (true) {
+                System.out.println("\n--- MOVIE SYSTEM ---");
+                System.out.println("1-Create  2-Show All  3-Find  4-Update  5-Delete  6-Exit");
+                System.out.print("Action: ");
 
-                System.out.println("\n1 - create movie");
-                System.out.println("2 - read all movies");
-                System.out.println("3 - read movie by id");
-                System.out.println("4 - update movie");
-                System.out.println("5 - delete movie");
-                System.out.println("6 - exit");
-                System.out.print("Choose (1-6): ");
+                String choice = sc.nextLine();
+                switch (choice) {
+                    case "1" -> addMovie(conn);
+                    case "2" -> showMovies(conn);
+                    case "3" -> findMovie(conn);
+                    case "4" -> updateMovie(conn);
+                    case "5" -> deleteMovies(conn);
+                    case "6" -> { return; }
+                    default -> System.out.println("Invalid choice.");
+                }
+            }
+        } catch (Exception e) { System.err.println("Error: " + e.getMessage()); }
+    }
 
-                if (!scanner.hasNextInt()) {
-                    System.out.println("Error: Please enter a number!");
-                    scanner.nextLine();
+    private static void addMovie(Connection conn) throws SQLException {
+        // Validate title
+        String title;
+        while (true) {
+            System.out.print("Title: ");
+            title = sc.nextLine().trim();
+
+            if (title.isEmpty()) {
+                System.out.println("Title cannot be empty. Please try again.");
+                continue;
+            }
+
+            // Check for duplicate title
+            String checkSql = "SELECT COUNT(*) FROM movie_tickets WHERE LOWER(title) = LOWER(?)";
+            try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
+                checkPs.setString(1, title);
+                ResultSet rs = checkPs.executeQuery();
+                if (rs.next() && rs.getInt(1) > 0) {
+                    System.out.println("Movie with this title already exists. Please choose a different title.");
                     continue;
                 }
-                int choice = scanner.nextInt();
-                scanner.nextLine();
+            }
+            break;
+        }
 
-                if (choice < 1 || choice > 6) {
-                    System.out.println("Error: Please enter a number between 1 and 6.");
-                    continue;
-                }
+        // Validate genre (no numbers allowed)
+        String genre;
+        while (true) {
+            System.out.print("Genre: ");
+            genre = sc.nextLine().trim();
 
-                if (choice == 1) {
-                    System.out.println("--- Create New Movie ---");
+            if (genre.isEmpty()) {
+                System.out.println("Genre cannot be empty. Please try again.");
+                continue;
+            }
 
-                    String title = "";
-                    while (true) {
-                        System.out.print("Title: ");
-                        title = scanner.nextLine();
-
-                        String checkSql = "SELECT count(*) FROM movie_tickets WHERE title = ?";
-                        PreparedStatement checkStmt = con.prepareStatement(checkSql);
-                        checkStmt.setString(1, title);
-                        ResultSet checkRs = checkStmt.executeQuery();
-
-                        checkRs.next();
-                        int count = checkRs.getInt(1);
-
-                        if (count > 0) {
-                            System.out.println("Error: Movie with this title already exists! Try another.");
-                        } else {
-                            break;
-                        }
-                    }
-
-                    System.out.print("Genre: ");
-                    String genre = scanner.nextLine();
-
-                    int duration = -1;
-                    while (duration <= 0) {
-                        System.out.print("Duration (min): ");
-                        if (scanner.hasNextInt()) {
-                            duration = scanner.nextInt();
-                            if (duration <= 0) System.out.println("Error: Duration must be positive!");
-                        } else {
-                            System.out.println("Error: Please enter a number!");
-                            scanner.next();
-                        }
-                    }
-
-                    double rating = -1;
-                    while (rating < 0 || rating > 10) {
-                        System.out.print("Rating (0.0 - 10.0): ");
-                        if (scanner.hasNextDouble()) {
-                            rating = scanner.nextDouble();
-                            if (rating < 0 || rating > 10) System.out.println("Error: Rating must be between 0 and 10!");
-                        } else {
-                            System.out.println("Error: Please enter a number!");
-                            scanner.next();
-                        }
-                    }
-
-                    System.out.print("Available (true/false): ");
-                    boolean isAvailable = scanner.nextBoolean();
-                    scanner.nextLine();
-
-                    String sql = "INSERT INTO movie_tickets (title, genre, duration, rating, is_available) VALUES (?, ?, ?, ?, ?)";
-                    PreparedStatement ps = con.prepareStatement(sql);
-
-                    ps.setString(1, title);
-                    ps.setString(2, genre);
-                    ps.setInt(3, duration);
-                    ps.setDouble(4, rating);
-                    ps.setBoolean(5, isAvailable);
-
-                    ps.executeUpdate();
-                    System.out.println("Success: Movie created!");
-                }
-                else if (choice == 2) {
-
-                    String sql = "SELECT * FROM movie_tickets";
-
-                    ResultSet rs = stmt.executeQuery(sql);
-
-                    System.out.println("\n--- MOVIE LIST ---");
-
-                    while (rs.next()) {
-                        System.out.println(
-                                rs.getInt("id") + " | " +
-                                        rs.getString("title") + " | " +
-                                        rs.getString("genre") + " | " +
-                                        rs.getInt("duration") + " min | " +
-                                        rs.getDouble("rating") + "/10 | " +
-                                        rs.getBoolean("is_available")
-                        );
-                    }
-                }
-                else if (choice == 3) {
-
-                    System.out.print("Enter movie id: ");
-                    int id = scanner.nextInt();
-                    scanner.nextLine();
-
-                    String sql = "SELECT * FROM movie_tickets WHERE id = ?";
-
-                    PreparedStatement ps = con.prepareStatement(sql);
-                    ps.setInt(1, id);
-
-                    ResultSet rs = ps.executeQuery();
-
-                    if (rs.next()) {
-                        System.out.println(
-                                rs.getInt("id") + " | " +
-                                        rs.getString("title") + " | " +
-                                        rs.getString("genre") + " | " +
-                                        rs.getInt("duration") + " min | " +
-                                        rs.getDouble("rating") + "/10 | " +
-                                        rs.getBoolean("is_available")
-                        );
-                    } else {
-                        System.out.println("Movie not found");
-                    }
-                }
-                else if (choice == 4) {
-
-                    System.out.print("Enter movie ID to update: ");
-                    if (!scanner.hasNextInt()) {
-                        System.out.println("Invalid ID format.");
-                        scanner.nextLine();
-                        continue;
-                    }
-                    int id = scanner.nextInt();
-                    scanner.nextLine();
-
-                    String selectSql = "SELECT * FROM movie_tickets WHERE id = ?";
-                    PreparedStatement psSelect = con.prepareStatement(selectSql);
-                    psSelect.setInt(1, id);
-                    ResultSet rs = psSelect.executeQuery();
-
-                    if (!rs.next()) {
-                        System.out.println("Movie with ID " + id + " not found.");
-                        continue;
-                    }
-
-                    System.out.println("\nCurrent movie data:");
-                    System.out.println("1. Title: " + rs.getString("title"));
-                    System.out.println("2. Genre: " + rs.getString("genre"));
-                    System.out.println("3. Duration: " + rs.getInt("duration"));
-                    System.out.println("4. Rating: " + rs.getDouble("rating"));
-                    System.out.println("5. Available: " + rs.getBoolean("is_available"));
-
-                    System.out.println("\nChoose field to update (1-5):");
-                    if (!scanner.hasNextInt()) {
-                        System.out.println("Invalid choice.");
-                        scanner.nextLine();
-                        continue;
-                    }
-                    int fieldChoice = scanner.nextInt();
-                    scanner.nextLine();
-
-                    String sql = "";
-                    PreparedStatement psUpdate = null;
-
-                    switch (fieldChoice) {
-                        case 1:
-                            System.out.println("Old title: " + rs.getString("title"));
-                            String newTitle = "";
-                            while (true) {
-                                System.out.print("Enter new title: ");
-                                newTitle = scanner.nextLine();
-
-                                if (newTitle.trim().isEmpty()) {
-                                    System.out.println("Title cannot be empty.");
-                                    continue;
-                                }
-
-                                String checkSql = "SELECT count(*) FROM movie_tickets WHERE title = ? AND id != ?";
-                                PreparedStatement checkStmt = con.prepareStatement(checkSql);
-                                checkStmt.setString(1, newTitle);
-                                checkStmt.setInt(2, id);
-                                ResultSet checkRs = checkStmt.executeQuery();
-                                checkRs.next();
-
-                                if (checkRs.getInt(1) > 0) {
-                                    System.out.println("Error: Title already exists! Choose another.");
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            sql = "UPDATE movie_tickets SET title = ? WHERE id = ?";
-                            psUpdate = con.prepareStatement(sql);
-                            psUpdate.setString(1, newTitle);
-                            psUpdate.setInt(2, id);
-                            break;
-
-                        case 2:
-                            System.out.println("Old genre: " + rs.getString("genre"));
-                            System.out.print("New genre: ");
-                            String newGenre = scanner.nextLine();
-
-                            sql = "UPDATE movie_tickets SET genre = ? WHERE id = ?";
-                            psUpdate = con.prepareStatement(sql);
-                            psUpdate.setString(1, newGenre);
-                            psUpdate.setInt(2, id);
-                            break;
-
-                        case 3:
-                            System.out.println("Old duration: " + rs.getInt("duration"));
-                            int newDuration = -1;
-
-                            while (newDuration <= 0) {
-                                System.out.print("Enter new duration (min): ");
-                                if (scanner.hasNextInt()) {
-                                    newDuration = scanner.nextInt();
-                                    if (newDuration <= 0) System.out.println("Error: Duration must be positive.");
-                                } else {
-                                    System.out.println("Error: Enter a valid number.");
-                                    scanner.next();
-                                }
-                            }
-                            scanner.nextLine();
-
-                            sql = "UPDATE movie_tickets SET duration = ? WHERE id = ?";
-                            psUpdate = con.prepareStatement(sql);
-                            psUpdate.setInt(1, newDuration);
-                            psUpdate.setInt(2, id);
-                            break;
-
-                        case 4:
-                            System.out.println("Old rating: " + rs.getDouble("rating"));
-                            double newRating = -1;
-
-                            while (newRating < 0 || newRating > 10) {
-                                System.out.print("Enter new rating (0-10): ");
-                                if (scanner.hasNextDouble()) {
-                                    newRating = scanner.nextDouble();
-                                    if (newRating < 0 || newRating > 10) System.out.println("Error: Rating must be 0-10.");
-                                } else {
-                                    System.out.println("Error: Enter a valid number.");
-                                    scanner.next();
-                                }
-                            }
-                            scanner.nextLine();
-
-                            sql = "UPDATE movie_tickets SET rating = ? WHERE id = ?";
-                            psUpdate = con.prepareStatement(sql);
-                            psUpdate.setDouble(1, newRating);
-                            psUpdate.setInt(2, id);
-                            break;
-
-                        case 5:
-                            System.out.println("Old availability: " + rs.getBoolean("is_available"));
-                            System.out.print("New availability (true/false): ");
-
-                            while (!scanner.hasNextBoolean()) {
-                                System.out.println("Error: Type 'true' or 'false'");
-                                scanner.next();
-                            }
-                            boolean newAvailable = scanner.nextBoolean();
-                            scanner.nextLine();
-
-                            sql = "UPDATE movie_tickets SET is_available = ? WHERE id = ?";
-                            psUpdate = con.prepareStatement(sql);
-                            psUpdate.setBoolean(1, newAvailable);
-                            psUpdate.setInt(2, id);
-                            break;
-
-                        default:
-                            System.out.println("Wrong field choice.");
-                            continue;
-                    }
-
-                    if (psUpdate != null) {
-                        psUpdate.executeUpdate();
-                        System.out.println("Movie updated successfully!");
-
-                        PreparedStatement psShow = con.prepareStatement("SELECT * FROM movie_tickets WHERE id = ?");
-                        psShow.setInt(1, id);
-                        ResultSet res = psShow.executeQuery();
-                        if(res.next()) {
-                            System.out.println("Updated Data: " + res.getString("title") + " | " + res.getString("genre") + " | " + res.getInt("duration") + "min" + " | " + res.getDouble("rating") + "/10" + " | " + res.getBoolean("is_available"));
-                        }
-                    }
-                }
-
-                else if (choice == 5) {
-
-                    System.out.print("Enter movie IDs to delete (separated by space): ");
-                    String input = scanner.nextLine();
-                    String[] parts = input.split(" ");
-
-                    int[] ids = new int[parts.length];
-                    for (int i = 0; i < parts.length; i++) {
-                        ids[i] = Integer.parseInt(parts[i]);
-                    }
-
-                    System.out.println("\nMovies to delete:");
-                    for (int id : ids) {
-                        PreparedStatement psSelect = con.prepareStatement(
-                                "SELECT * FROM movie_tickets WHERE id = ?"
-                        );
-                        psSelect.setInt(1, id);
-                        ResultSet rs = psSelect.executeQuery();
-                        if (rs.next()) {
-                            System.out.println(
-                                    rs.getInt("id") + " | " +
-                                            rs.getString("title") + " | " +
-                                            rs.getString("genre") + " | " +
-                                            rs.getInt("duration") + " | " +
-                                            rs.getDouble("rating") + " | " +
-                                            rs.getBoolean("is_available")
-                            );
-                        } else {
-                            System.out.println(id + " - Movie not found");
-                        }
-                    }
-
-                    System.out.print("\nAre you sure you want to delete these movies? (y/n): ");
-                    String confirm = scanner.nextLine();
-
-                    if (confirm.equalsIgnoreCase("y")) {
-                        for (int id : ids) {
-                            PreparedStatement psDelete = con.prepareStatement(
-                                    "DELETE FROM movie_tickets WHERE id = ?"
-                            );
-                            psDelete.setInt(1, id);
-                            psDelete.executeUpdate();
-                        }
-                        System.out.println("Selected movies deleted successfully!");
-                    } else {
-                        System.out.println("Delete cancelled");
-                    }
-                }
-
-                else if (choice == 6) {
-                    System.out.println("Exit");
+            // Check if genre contains numbers
+            boolean hasNumber = false;
+            for (char c : genre.toCharArray()) {
+                if (Character.isDigit(c)) {
+                    hasNumber = true;
                     break;
-                }
-
-                else {
-                    System.out.println("Wrong option");
                 }
             }
 
-            con.close();
-
-        } catch (Exception e) {
-            System.out.println(e.getMessage());
+            if (hasNumber) {
+                System.out.println("Genre cannot contain numbers. Please try again.");
+                continue;
+            }
+            break;
         }
+
+        // Validate duration
+        int dur;
+        while (true) {
+            System.out.print("Duration (minutes): ");
+            try {
+                dur = Integer.parseInt(sc.nextLine());
+                if (dur <= 0) {
+                    System.out.println("Duration must be greater than 0. Please try again.");
+                    continue;
+                }
+                if (dur > 400) {
+                    System.out.println("Duration is too long. Maximum is 400 minutes. Please try again.");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid number.");
+            }
+        }
+
+        // Validate rating
+        double rate;
+        while (true) {
+            System.out.print("Rating (0-10): ");
+            try {
+                rate = Double.parseDouble(sc.nextLine());
+                if (rate < 0) {
+                    System.out.println("Rating cannot be less than 0. Please try again.");
+                    continue;
+                }
+                if (rate > 10) {
+                    System.out.println("Rating cannot be greater than 10. Please try again.");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid rating format. Please enter a valid number.");
+            }
+        }
+
+        String sql = "INSERT INTO movie_tickets (title, genre, duration, rating, is_available) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, title);
+            ps.setString(2, genre);
+            ps.setInt(3, dur);
+            ps.setDouble(4, rate);
+            ps.setBoolean(5, true); // Default to available
+            ps.executeUpdate();
+            System.out.println("Movie added!");
+        }
+    }
+
+    private static void showMovies(Connection conn) throws SQLException {
+        String sql = "SELECT *, CASE WHEN is_available THEN 'Available' ELSE 'Not Available' END as status FROM movie_tickets ORDER BY id";
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            System.out.printf("| %-3s| %-25s| %-15s| %-10s| %-7s| %-12s|\n",
+                    "ID", "Title", "Genre", "Duration", "Rating", "Status");
+            System.out.println("-----------------------------------------");
+
+            boolean hasMovies = false;
+            while (rs.next()) {
+                hasMovies = true;
+                System.out.printf("| %-3d| %-25s| %-15s| %-10d| %-7.1f| %-12s|\n",
+                        rs.getInt("id"),
+                        truncateString(rs.getString("title"), 23),
+                        truncateString(rs.getString("genre"), 13),
+                        rs.getInt("duration"),
+                        rs.getDouble("rating"),
+                        rs.getString("status"));
+            }
+
+            if (!hasMovies) {
+                System.out.println("No movies found.");
+            }
+        }
+    }
+
+    private static void findMovie(Connection conn) throws SQLException {
+        int id;
+        while (true) {
+            System.out.print("ID: ");
+            try {
+                id = Integer.parseInt(sc.nextLine());
+                if (id <= 0) {
+                    System.out.println("ID must be greater than 0. Please try again.");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid ID format. Please enter a valid number.");
+            }
+        }
+
+        String sql = "SELECT *, CASE WHEN is_available THEN 'Available' ELSE 'Not Available' END as status FROM movie_tickets WHERE id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                System.out.println("\nMovie found:");
+                System.out.println("ID: " + rs.getInt("id"));
+                System.out.println("Title: " + rs.getString("title"));
+                System.out.println("Genre: " + rs.getString("genre"));
+                System.out.println("Duration: " + rs.getInt("duration") + " minutes");
+                System.out.println("Rating: " + rs.getDouble("rating") + "/10");
+                System.out.println("Status: " + rs.getString("status"));
+            } else {
+                System.out.println("Movie not found.");
+            }
+        }
+    }
+
+    private static void updateMovie(Connection conn) throws SQLException {
+        int id;
+        while (true) {
+            System.out.print("ID to update: ");
+            try {
+                id = Integer.parseInt(sc.nextLine());
+                if (id <= 0) {
+                    System.out.println("ID must be greater than 0. Please try again.");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid ID format. Please enter a valid number.");
+            }
+        }
+
+        // Check if movie exists
+        String checkSql = "SELECT id FROM movie_tickets WHERE id = ?";
+        try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
+            checkPs.setInt(1, id);
+            ResultSet rs = checkPs.executeQuery();
+            if (!rs.next()) {
+                System.out.println("Movie with ID " + id + " not found.");
+                return;
+            }
+        }
+
+        double rate;
+        while (true) {
+            System.out.print("New Rating (0-10): ");
+            try {
+                rate = Double.parseDouble(sc.nextLine());
+                if (rate < 0) {
+                    System.out.println("Rating cannot be less than 0. Please try again.");
+                    continue;
+                }
+                if (rate > 10) {
+                    System.out.println("Rating cannot be greater than 10. Please try again.");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid rating format. Please enter a valid number.");
+            }
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement("UPDATE movie_tickets SET rating = ? WHERE id = ?")) {
+            ps.setDouble(1, rate);
+            ps.setInt(2, id);
+            System.out.println(ps.executeUpdate() > 0 ? "Updated!" : "Update failed.");
+        }
+    }
+
+    private static void deleteMovies(Connection conn) throws SQLException {
+        System.out.print("Enter IDs to delete (space separated): ");
+        String[] ids = sc.nextLine().split(" ");
+
+        if (ids.length == 0 || (ids.length == 1 && ids[0].isEmpty())) {
+            System.out.println("No IDs provided. Deletion cancelled.");
+            return;
+        }
+
+        // Validate all IDs
+        boolean validIds = true;
+        for (String idStr : ids) {
+            try {
+                int id = Integer.parseInt(idStr.trim());
+                if (id <= 0) {
+                    System.out.println("Invalid ID: " + idStr + " (must be greater than 0)");
+                    validIds = false;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid ID format: " + idStr);
+                validIds = false;
+            }
+        }
+
+        if (!validIds) {
+            System.out.println("Deletion cancelled due to invalid IDs.");
+            return;
+        }
+
+        System.out.print("Are you sure you want to delete " + ids.length + " movie(s)? (y/n): ");
+        if (!sc.nextLine().equalsIgnoreCase("y")) {
+            System.out.println("Deletion cancelled.");
+            return;
+        }
+
+        int deletedCount = 0;
+        for (String id : ids) {
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM movie_tickets WHERE id = ?")) {
+                ps.setInt(1, Integer.parseInt(id.trim()));
+                deletedCount += ps.executeUpdate();
+            }
+        }
+        System.out.println("Deletions complete. " + deletedCount + " movie(s) deleted.");
+    }
+
+    // Helper method to truncate long strings for table display
+    private static String truncateString(String str, int maxLength) {
+        if (str == null) return "";
+        if (str.length() <= maxLength) return str;
+        return str.substring(0, maxLength - 3) + "...";
     }
 }
